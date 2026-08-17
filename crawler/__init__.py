@@ -1,7 +1,5 @@
-"""Crawler package placeholder.
+"""BMI Hub crawler package."""
 
-Future implementation will use Playwright and BeautifulSoup
-to collect pages into data/raw for downstream processing.
-"""
+from crawler.crawler import BmiHubCrawler, main
 
-__all__: list[str] = []
+__all__ = ["BmiHubCrawler", "main"]

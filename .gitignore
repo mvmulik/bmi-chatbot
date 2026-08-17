@@ -34,6 +34,9 @@ crawler/.playwright/
 playwright-report/
 test-results/
 
+# Authenticated browser session (never commit)
+data/auth/
+
 # Data & vector store (keep directory placeholders)
 data/raw/*
 !data/raw/.gitkeep

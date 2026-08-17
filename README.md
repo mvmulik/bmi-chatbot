@@ -8,7 +8,7 @@ Scaffold for a RAG chatbot with a React frontend, FastAPI backend, Playwright cr
 | --- | --- |
 | Frontend | React, TypeScript, Vite |
 | Backend | Python, FastAPI |
-| Crawler | Python, Playwright, BeautifulSoup *(not implemented yet)* |
+| Crawler | Python, Playwright, BeautifulSoup (interactive auth + BMI Hub crawl) |
 | Vector DB | ChromaDB *(wired via config; indexing not implemented yet)* |
 | AI | Azure OpenAI / OpenAI-compatible APIs via environment variables |
 
@@ -31,7 +31,7 @@ bmi-chatbot/
 
 - Node.js 20+ and npm
 - Python 3.11+
-- (Later) Playwright browsers for the crawler
+- Playwright Chromium (`playwright install chromium`)
 
 ## Setup
 
@@ -68,6 +68,22 @@ App: http://localhost:5173
 
 > Note: `npm run dev` uses Node to launch Vite directly so Windows paths containing `&` (for example OneDrive company folders) work reliably.
 
+### 4. Crawler (BMI Hub)
+
+From the project root:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r crawler\requirements.txt
+playwright install chromium
+python -m crawler --max-pages 50
+```
+
+First run opens a headed browser for manual login. The session is saved to `data/auth/playwright_storage_state.json` (gitignored) and reused on later crawls. Use `--reauth` to log in again.
+
+Raw pages and `crawl_report.json` are written under `data/raw/crawl_<timestamp>/`.
+
 ## Status
 
-This repository currently provides a runnable frontend and backend shell only. The crawler and chatbot RAG flow are intentionally not implemented yet.
+Frontend, backend, and BMI Hub crawler shells are runnable locally. Vector embeddings / chatbot RAG are not implemented yet.
