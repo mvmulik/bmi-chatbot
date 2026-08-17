@@ -9,6 +9,7 @@ Scaffold for a RAG chatbot with a React frontend, FastAPI backend, Playwright cr
 | Frontend | React, TypeScript, Vite |
 | Backend | Python, FastAPI |
 | Crawler | Python, Playwright, BeautifulSoup (interactive auth + BMI Hub crawl) |
+| Processor | HTML cleaning + token chunking for RAG (no embeddings yet) |
 | Vector DB | ChromaDB *(wired via config; indexing not implemented yet)* |
 | AI | Azure OpenAI / OpenAI-compatible APIs via environment variables |
 
@@ -18,7 +19,8 @@ Scaffold for a RAG chatbot with a React frontend, FastAPI backend, Playwright cr
 bmi-chatbot/
   frontend/          # React + TypeScript + Vite UI
   backend/           # FastAPI application
-  crawler/           # Web crawler package (placeholder)
+  crawler/           # BMI Hub Playwright crawler
+  processor/         # Clean + chunk pipeline (data/raw → data/processed)
   data/raw/          # Raw crawled content
   data/processed/    # Cleaned / chunked documents
   data/chroma/       # ChromaDB persistence
@@ -84,6 +86,19 @@ First run opens a headed browser for manual login. The session is saved to `data
 
 Raw pages and `crawl_report.json` are written under `data/raw/crawl_<timestamp>/`.
 
+### 5. Content processor
+
+```powershell
+pip install -r processor\requirements.txt
+python -m processor
+```
+
+Processes the newest `data/raw/crawl_*` run into `data/processed/process_<timestamp>/` with cleaned documents, `chunks.jsonl`, and `process_report.json`. Default chunk size is 1000 tokens with 150-token overlap.
+
+```powershell
+python -m processor --crawl-dir data\raw\crawl_YYYYMMDDTHHMMSSZ --chunk-size 1000 --chunk-overlap 150
+```
+
 ## Status
 
-Frontend, backend, and BMI Hub crawler shells are runnable locally. Vector embeddings / chatbot RAG are not implemented yet.
+Frontend, backend, crawler, and content processor are runnable locally. Vector embeddings / chatbot RAG are not implemented yet.

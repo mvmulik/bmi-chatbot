@@ -205,5 +205,6 @@ def extract_page_content(
         "visible_text": _visible_text(soup),
         "navigation": _extract_navigation(soup, final_url or url),
         "links": links,
+        "html": html,
         "crawl_timestamp": utc_now_iso(),
     }
