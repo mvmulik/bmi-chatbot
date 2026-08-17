@@ -1,136 +1,196 @@
-# BMI Chatbot
+# BMI Chatbot — Local Windows Runbook
 
-Scaffold for a RAG chatbot with a React frontend, FastAPI backend, Playwright crawler, and ChromaDB vector store.
-
-## Architecture
-
-| Layer | Stack |
-| --- | --- |
-| Frontend | React, TypeScript, Vite BMI Hub Assistant chat UI |
-| Backend | Python, FastAPI RAG chat (`POST /api/chat`) |
-| Crawler | Python, Playwright, BeautifulSoup (interactive auth + BMI Hub crawl) |
-| Processor | HTML cleaning + token chunking for RAG (no embeddings yet) |
-| Vector DB | ChromaDB indexing from processed chunks (Azure/OpenAI embeddings via env) |
-| AI | Azure OpenAI / OpenAI-compatible APIs via environment variables |
-
-## Project layout
-
-```
-bmi-chatbot/
-  frontend/          # React + TypeScript + Vite UI
-  backend/           # FastAPI application
-  crawler/           # BMI Hub Playwright crawler
-  processor/         # Clean + chunk pipeline (data/raw → data/processed)
-  data/raw/          # Raw crawled content
-  data/processed/    # Cleaned / chunked documents
-  data/chroma/       # ChromaDB persistence
-  scripts/           # Utility scripts
-  tests/             # Shared / integration tests
-  docs/              # Project documentation
-```
-
-## Prerequisites
-
-- Node.js 20+ and npm
-- Python 3.11+
-- Playwright Chromium (`playwright install chromium`)
-
-## Setup
-
-### 1. Environment
+Project root:
 
 ```powershell
+cd "C:\Users\mvmulik\OneDrive - Burns & McDonnell\Documents\Manali Mulik\Project\bmi-chatbot"
+```
+
+## One-time setup
+
+```powershell
+cd "C:\Users\mvmulik\OneDrive - Burns & McDonnell\Documents\Manali Mulik\Project\bmi-chatbot"
+
+# Root environment (Azure OpenAI / OpenAI-compatible + Chroma settings)
 Copy-Item .env.example .env
-```
+notepad .env
 
-Edit `.env` with your Azure OpenAI (or OpenAI-compatible) credentials when you are ready to wire AI features.
+# Frontend API base URL (no secrets)
+Copy-Item frontend\.env.example frontend\.env
 
-### 2. Backend
-
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-API docs: http://localhost:8000/docs  
-Health check: http://localhost:8000/health  
-Chat: `POST http://localhost:8000/api/chat`
-
-```json
-{
-  "message": "What is the PPE requirement?",
-  "conversationId": "optional-id"
-}
-```
-
-Requires a populated Chroma index and valid Azure OpenAI (or OpenAI-compatible) chat + embedding settings in `.env`.
-
-### 3. Frontend
-
-```powershell
-cd frontend
-Copy-Item .env.example .env
-npm install
-npm run dev
-```
-
-App: http://localhost:5173
-
-Set `VITE_API_BASE_URL` in `frontend/.env` (default `http://localhost:8000`). No API keys are stored in the React app.
-
-> Note: `npm run dev` uses Node to launch Vite directly so Windows paths containing `&` (for example OneDrive company folders) work reliably.
-
-### 4. Crawler (BMI Hub)
-
-From the project root:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+# Python venv + dependencies (scripts also install as needed)
+python -m venv backend\.venv
+.\backend\.venv\Scripts\Activate.ps1
+pip install -r backend\requirements.txt
 pip install -r crawler\requirements.txt
-playwright install chromium
-python -m crawler --max-pages 50
-```
-
-First run opens a headed browser for manual login. The session is saved to `data/auth/playwright_storage_state.json` (gitignored) and reused on later crawls. Use `--reauth` to log in again.
-
-Raw pages and `crawl_report.json` are written under `data/raw/crawl_<timestamp>/`.
-
-### 5. Content processor
-
-```powershell
 pip install -r processor\requirements.txt
-python -m processor
+playwright install chromium
+
+# Frontend dependencies
+cd frontend
+npm install
+cd ..
 ```
 
-Processes the newest `data/raw/crawl_*` run into `data/processed/process_<timestamp>/` with cleaned documents, `chunks.jsonl`, and `process_report.json`. Default chunk size is 1000 tokens with 150-token overlap.
+Required `.env` values for chat + indexing:
+
+- `OPENAI_API_TYPE=azure` (or `openai`)
+- `OPENAI_API_KEY=...`
+- `OPENAI_API_BASE=...` (Azure endpoint)
+- `OPENAI_API_VERSION=...`
+- `OPENAI_DEPLOYMENT_NAME=...` (chat model deployment)
+- `OPENAI_EMBEDDING_DEPLOYMENT_NAME=...`
+- `CHROMA_PERSIST_DIRECTORY=./data/chroma`
+- `CHROMA_COLLECTION_NAME=bmi_documents`
+
+## Daily workflow (PowerShell scripts)
+
+Open separate terminals from the project root.
+
+### 1. Start backend
 
 ```powershell
-python -m processor --crawl-dir data\raw\crawl_YYYYMMDDTHHMMSSZ --chunk-size 1000 --chunk-overlap 150
+cd "C:\Users\mvmulik\OneDrive - Burns & McDonnell\Documents\Manali Mulik\Project\bmi-chatbot"
+.\scripts\start-backend.ps1
 ```
 
-### 6. Vector indexing (ChromaDB)
-
-Requires embedding credentials in `.env` (Azure OpenAI recommended for Dev/Test):
+First-time dependency install:
 
 ```powershell
-pip install -r crawler\requirements.txt
-python -m crawler.indexer full
-python -m crawler.indexer incremental
-python -m crawler.indexer stats
-python -m crawler.indexer clear
+.\scripts\start-backend.ps1 -InstallDeps
 ```
 
-- `full` — delete collection and rebuild from the newest `data/processed/process_*` run  
-- `incremental` — upsert only chunk IDs not already present  
-- `stats` — collection count and sample IDs  
-- `clear` — delete the collection  
+- API: http://localhost:8000  
+- Health: http://localhost:8000/health  
+- Docs: http://localhost:8000/docs  
 
-Optional: `python -m crawler.indexer full --process-dir data\processed\process_YYYYMMDDTHHMMSSZ`
+### 2. Start frontend
 
-## Status
+```powershell
+cd "C:\Users\mvmulik\OneDrive - Burns & McDonnell\Documents\Manali Mulik\Project\bmi-chatbot"
+.\scripts\start-frontend.ps1
+```
 
-Frontend, backend RAG chat, crawler, content processor, and Chroma indexing are runnable locally.
+- UI: http://localhost:5173  
+- Uses `frontend/.env` → `VITE_API_BASE_URL=http://localhost:8000`
+
+### 3. Crawl BMI Hub
+
+```powershell
+cd "C:\Users\mvmulik\OneDrive - Burns & McDonnell\Documents\Manali Mulik\Project\bmi-chatbot"
+.\scripts\crawl.ps1 -MaxPages 50
+```
+
+First run opens a browser for manual SSO login. Press Enter in the terminal after you are signed in.  
+Re-authenticate later with:
+
+```powershell
+.\scripts\crawl.ps1 -Reauth -MaxPages 50
+```
+
+Output: `data\raw\crawl_<timestamp>\`
+
+### 4. Process content
+
+```powershell
+.\scripts\process.ps1
+```
+
+Output: `data\processed\process_<timestamp>\`
+
+### 5. Build / update vector index
+
+```powershell
+# First time or after major content changes
+.\scripts\index.ps1 -Mode full
+
+# Later updates (skips existing chunk IDs)
+.\scripts\index.ps1 -Mode incremental
+
+# Inspect collection
+.\scripts\index.ps1 -Mode stats
+```
+
+### 6. Run tests
+
+```powershell
+.\scripts\test.ps1
+```
+
+### 7. Verify integration (backend + frontend + real chat/sources)
+
+With backend and frontend already running, and after crawl → process → index:
+
+```powershell
+.\scripts\verify-integration.ps1
+```
+
+Optional custom question:
+
+```powershell
+.\scripts\verify-integration.ps1 -Question "Where do I find safety guidance on BMI Hub?"
+```
+
+## Manual smoke checks
+
+```powershell
+# Health
+Invoke-RestMethod http://127.0.0.1:8000/health
+
+# Chat (requires indexed Chroma content + valid LLM credentials)
+$body = @{
+  message = "What information is available on BMI Hub?"
+  conversationId = "local-1"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8000/api/chat `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+## Script reference
+
+| Script | Purpose |
+| --- | --- |
+| `scripts\start-backend.ps1` | Start FastAPI on port 8000 |
+| `scripts\start-frontend.ps1` | Start Vite UI on port 5173 |
+| `scripts\crawl.ps1` | Authenticated BMI Hub crawl |
+| `scripts\process.ps1` | Clean + chunk raw crawl output |
+| `scripts\index.ps1` | full / incremental / stats / clear Chroma index |
+| `scripts\test.ps1` | pytest + frontend build |
+| `scripts\verify-integration.ps1` | Live health/UI/chat+sources checks |
+
+## Verification status (this machine)
+
+Verified locally without fake fixtures:
+
+- Backend starts (`.\scripts\start-backend.ps1`)
+- Frontend starts (`.\scripts\start-frontend.ps1`)
+- `GET /health` and `GET /api/health` return healthy
+- Frontend loads BMI Hub Assistant UI and can reach the backend API base URL
+- `.\scripts\test.ps1` — 22 pytest tests + frontend build passed
+
+Not yet verifiable until you complete the data pipeline on this machine:
+
+- Project root `.env` is missing (Azure OpenAI credentials required for embeddings/chat)
+- `data/raw` and `data/processed` are empty (no BMI Hub crawl yet)
+- Chroma collection `bmi_documents` count is `0`
+
+After you configure `.env` and run crawl → process → index, finish with:
+
+```powershell
+.\scripts\verify-integration.ps1
+```
+
+That script asserts a real chat answer with non-empty source titles/URLs.
+
+- Execution policy (if scripts are blocked):
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+- Do not put API keys in the React app. Only `VITE_API_BASE_URL` belongs in `frontend/.env`.
+- Chat answers are grounded in indexed BMI Hub content only.
