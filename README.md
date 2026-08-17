@@ -10,7 +10,7 @@ Scaffold for a RAG chatbot with a React frontend, FastAPI backend, Playwright cr
 | Backend | Python, FastAPI |
 | Crawler | Python, Playwright, BeautifulSoup (interactive auth + BMI Hub crawl) |
 | Processor | HTML cleaning + token chunking for RAG (no embeddings yet) |
-| Vector DB | ChromaDB *(wired via config; indexing not implemented yet)* |
+| Vector DB | ChromaDB indexing from processed chunks (Azure/OpenAI embeddings via env) |
 | AI | Azure OpenAI / OpenAI-compatible APIs via environment variables |
 
 ## Project layout
@@ -99,6 +99,25 @@ Processes the newest `data/raw/crawl_*` run into `data/processed/process_<timest
 python -m processor --crawl-dir data\raw\crawl_YYYYMMDDTHHMMSSZ --chunk-size 1000 --chunk-overlap 150
 ```
 
+### 6. Vector indexing (ChromaDB)
+
+Requires embedding credentials in `.env` (Azure OpenAI recommended for Dev/Test):
+
+```powershell
+pip install -r crawler\requirements.txt
+python -m crawler.indexer full
+python -m crawler.indexer incremental
+python -m crawler.indexer stats
+python -m crawler.indexer clear
+```
+
+- `full` — delete collection and rebuild from the newest `data/processed/process_*` run  
+- `incremental` — upsert only chunk IDs not already present  
+- `stats` — collection count and sample IDs  
+- `clear` — delete the collection  
+
+Optional: `python -m crawler.indexer full --process-dir data\processed\process_YYYYMMDDTHHMMSSZ`
+
 ## Status
 
-Frontend, backend, crawler, and content processor are runnable locally. Vector embeddings / chatbot RAG are not implemented yet.
+Frontend, backend, crawler, content processor, and Chroma indexing are runnable locally. Chat API / RAG query endpoints are not implemented yet.

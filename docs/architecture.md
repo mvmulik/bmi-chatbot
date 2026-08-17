@@ -6,8 +6,9 @@
 2. **Backend (`backend/`)** — FastAPI service for health, chat, and retrieval endpoints.
 3. **Crawler (`crawler/`)** — Playwright + BeautifulSoup crawler with interactive SSO login and BMI Hub–only discovery.
 4. **Processor (`processor/`)** — Cleans HTML, preserves structure, and creates overlapping token chunks for RAG.
-5. **Data (`data/`)** — Raw crawls, processed chunks, ChromaDB persistence, and gitignored auth storage.
-6. **AI** — Azure OpenAI or OpenAI-compatible providers configured via `.env`.
+5. **Indexer (`crawler/indexer.py`)** — Embeds processed chunks and stores vectors/metadata in ChromaDB.
+6. **Data (`data/`)** — Raw crawls, processed chunks, ChromaDB persistence, and gitignored auth storage.
+7. **AI** — Azure OpenAI or OpenAI-compatible providers configured via `.env`.
 
 ## Local ports
 
