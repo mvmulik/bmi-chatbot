@@ -37,14 +37,23 @@ class RagService:
     @property
     def deps(self) -> RagDependencies:
         if self._deps is None:
+            logger.info("RAG deps init: creating embedding provider")
             embedder = create_embedding_provider(self.config)
+            logger.info("RAG deps init: connecting Chroma retriever path=%s", self.config.chroma_path)
             retriever = ChromaRetriever(embedder, self.config)
+            logger.info(
+                "RAG deps init: Chroma collection=%s count=%s",
+                self.config.chroma_collection_name,
+                retriever.count(),
+            )
+            logger.info("RAG deps init: creating LLM client")
             llm = LLMClient(self.config)
             self._deps = RagDependencies(
                 embedder=embedder,
                 retriever=retriever,
                 llm=llm,
             )
+            logger.info("RAG deps init: complete")
         return self._deps
 
     def _build_context(self, chunks: list[RetrievedChunk]) -> list[str]:
@@ -91,30 +100,60 @@ class RagService:
         )
 
         try:
+            logger.info("RAG stage=deps_and_retrieve conversationId=%s", conversation_id)
             chunks = self.deps.retriever.search(request.message)
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Retrieval failed")
-            raise RagServiceError("Failed to retrieve relevant BMI Hub content.") from exc
+            # Preserve the underlying cause in logs; keep a stable client-facing prefix.
+            logger.exception(
+                "Retrieval failed stage=embedding_or_chroma type=%s detail=%s",
+                type(exc).__name__,
+                exc,
+            )
+            raise RagServiceError(
+                f"Failed to retrieve relevant BMI Hub content. ({type(exc).__name__}: {exc})"
+            ) from exc
 
         if not chunks:
             answer = (
                 "I could not find relevant information in the available BMI Hub content "
                 "for that question."
             )
-            logger.info("RAG chat empty retrieval conversationId=%s", conversation_id)
+            chroma_count = None
+            try:
+                chroma_count = self.deps.retriever.count()
+            except Exception:  # noqa: BLE001
+                chroma_count = "unavailable"
+            logger.warning(
+                "RAG stage=empty_context conversationId=%s chroma_count=%s",
+                conversation_id,
+                chroma_count,
+            )
             return ChatResponse(answer=answer, sources=[])
 
         context_blocks = self._build_context(chunks)
+        logger.info(
+            "RAG stage=context_built conversationId=%s chunks=%s context_blocks=%s",
+            conversation_id,
+            len(chunks),
+            len(context_blocks),
+        )
         user_prompt = build_user_prompt(question=request.message, context_blocks=context_blocks)
 
         try:
+            logger.info("RAG stage=llm_complete conversationId=%s", conversation_id)
             answer = self.deps.llm.complete(
                 system_prompt=SYSTEM_PROMPT,
                 user_prompt=user_prompt,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.exception("LLM completion failed")
-            raise RagServiceError("Failed to generate an answer from the language model.") from exc
+            logger.exception(
+                "LLM completion failed type=%s detail=%s",
+                type(exc).__name__,
+                exc,
+            )
+            raise RagServiceError(
+                f"Failed to generate an answer from the language model. ({type(exc).__name__}: {exc})"
+            ) from exc
 
         sources = self._to_sources(chunks)
         logger.info(

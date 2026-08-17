@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.logging_config import configure_logging
-from app.routers import chat, health
+from app.routers import chat, debug, health
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(chat.router)
+app.include_router(debug.router)
 
 
 @app.exception_handler(RequestValidationError)
