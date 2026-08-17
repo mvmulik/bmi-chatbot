@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     cors_origins: str = "http://localhost:5173"
+    log_level: str = "INFO"
 
     openai_api_type: str = "azure"
     openai_api_key: str = ""
@@ -30,15 +31,41 @@ class Settings(BaseSettings):
     openai_api_version: str = "2024-08-01-preview"
     openai_deployment_name: str = ""
     openai_embedding_deployment_name: str = ""
-    openai_model: str = ""
-    openai_embedding_model: str = ""
+    openai_model: str = "gpt-4o-mini"
+    openai_embedding_model: str = "text-embedding-3-small"
 
-    chroma_persist_directory: str = "./data/chroma"
+    chroma_persist_directory: str = str(ROOT_DIR / "data" / "chroma")
     chroma_collection_name: str = "bmi_documents"
+
+    rag_top_k: int = 5
+    rag_max_context_chars: int = 12000
+    rag_temperature: float = 0.1
+    rag_max_output_tokens: int = 800
+    embedding_provider: str = ""
+    embedding_batch_size: int = 64
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def chroma_path(self) -> Path:
+        path = Path(self.chroma_persist_directory)
+        if not path.is_absolute():
+            path = ROOT_DIR / path
+        return path
+
+    @property
+    def chat_model(self) -> str:
+        if self.openai_api_type.lower() == "azure":
+            return self.openai_deployment_name or self.openai_model
+        return self.openai_model or self.openai_deployment_name
+
+    @property
+    def embedding_model(self) -> str:
+        if self.openai_api_type.lower() == "azure":
+            return self.openai_embedding_deployment_name or self.openai_embedding_model
+        return self.openai_embedding_model or self.openai_embedding_deployment_name
 
 
 settings = Settings()

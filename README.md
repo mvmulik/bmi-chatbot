@@ -7,7 +7,7 @@ Scaffold for a RAG chatbot with a React frontend, FastAPI backend, Playwright cr
 | Layer | Stack |
 | --- | --- |
 | Frontend | React, TypeScript, Vite |
-| Backend | Python, FastAPI |
+| Backend | Python, FastAPI RAG chat (`POST /api/chat`) |
 | Crawler | Python, Playwright, BeautifulSoup (interactive auth + BMI Hub crawl) |
 | Processor | HTML cleaning + token chunking for RAG (no embeddings yet) |
 | Vector DB | ChromaDB indexing from processed chunks (Azure/OpenAI embeddings via env) |
@@ -56,7 +56,17 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 API docs: http://localhost:8000/docs  
-Health check: http://localhost:8000/health
+Health check: http://localhost:8000/health  
+Chat: `POST http://localhost:8000/api/chat`
+
+```json
+{
+  "message": "What is the PPE requirement?",
+  "conversationId": "optional-id"
+}
+```
+
+Requires a populated Chroma index and valid Azure OpenAI (or OpenAI-compatible) chat + embedding settings in `.env`.
 
 ### 3. Frontend
 
@@ -120,4 +130,4 @@ Optional: `python -m crawler.indexer full --process-dir data\processed\process_Y
 
 ## Status
 
-Frontend, backend, crawler, content processor, and Chroma indexing are runnable locally. Chat API / RAG query endpoints are not implemented yet.
+Frontend, backend RAG chat, crawler, content processor, and Chroma indexing are runnable locally.
