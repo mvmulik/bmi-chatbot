@@ -1,3 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600&display=swap');
+
+:root {
+  --bg: #eef2f6;
+  --bg-accent: #e3ebf4;
+  --surface: #ffffff;
+  --ink: #13233a;
+  --muted: #5b6b7c;
+  --line: #d5dee8;
+  --brand: #0b5cab;
+  --brand-dark: #084a8a;
+  --assistant: #f7fafc;
+  --user: #e8f1fb;
+  --danger: #9b1c1c;
+  --danger-bg: #fdeceb;
+  --shadow: 0 10px 30px rgba(19, 35, 58, 0.08);
+  --radius: 16px;
+  --font-sans: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --font-display: 'IBM Plex Serif', Georgia, serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(circle at top left, rgba(11, 92, 171, 0.12), transparent 34%),
+    linear-gradient(180deg, var(--bg-accent), var(--bg));
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: var(--brand);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

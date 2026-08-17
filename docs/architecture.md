@@ -2,7 +2,7 @@
 
 ## Components
 
-1. **Frontend (`frontend/`)** — React + TypeScript + Vite SPA that will host the chat UI.
+1. **Frontend (`frontend/`)** — React BMI Hub Assistant chat UI with sources, loading, and error handling.
 2. **Backend (`backend/`)** — FastAPI RAG API (`POST /api/chat`) with Chroma retrieval and grounded LLM answers.
 3. **Crawler (`crawler/`)** — Playwright + BeautifulSoup crawler with interactive SSO login and BMI Hub–only discovery.
 4. **Processor (`processor/`)** — Cleans HTML, preserves structure, and creates overlapping token chunks for RAG.

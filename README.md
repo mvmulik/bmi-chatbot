@@ -6,7 +6,7 @@ Scaffold for a RAG chatbot with a React frontend, FastAPI backend, Playwright cr
 
 | Layer | Stack |
 | --- | --- |
-| Frontend | React, TypeScript, Vite |
+| Frontend | React, TypeScript, Vite BMI Hub Assistant chat UI |
 | Backend | Python, FastAPI RAG chat (`POST /api/chat`) |
 | Crawler | Python, Playwright, BeautifulSoup (interactive auth + BMI Hub crawl) |
 | Processor | HTML cleaning + token chunking for RAG (no embeddings yet) |
@@ -72,11 +72,14 @@ Requires a populated Chroma index and valid Azure OpenAI (or OpenAI-compatible) 
 
 ```powershell
 cd frontend
+Copy-Item .env.example .env
 npm install
 npm run dev
 ```
 
 App: http://localhost:5173
+
+Set `VITE_API_BASE_URL` in `frontend/.env` (default `http://localhost:8000`). No API keys are stored in the React app.
 
 > Note: `npm run dev` uses Node to launch Vite directly so Windows paths containing `&` (for example OneDrive company folders) work reliably.
 

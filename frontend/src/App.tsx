@@ -1,53 +1,46 @@
-import { useEffect, useState } from 'react'
+import { ChatHeader } from './components/ChatHeader'
+import { ChatInput } from './components/ChatInput'
+import { MessageList } from './components/MessageList'
+import { SuggestedQuestions } from './components/SuggestedQuestions'
+import { SUGGESTED_QUESTIONS, useChat } from './hooks/useChat'
 import './App.css'
 
-type HealthStatus = 'checking' | 'healthy' | 'unreachable'
-
 function App() {
-  const [health, setHealth] = useState<HealthStatus>('checking')
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function checkHealth() {
-      try {
-        const response = await fetch('/api/health')
-        if (!cancelled) {
-          setHealth(response.ok ? 'healthy' : 'unreachable')
-        }
-      } catch {
-        if (!cancelled) {
-          setHealth('unreachable')
-        }
-      }
-    }
-
-    void checkHealth()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { messages, isLoading, error, canClear, sendMessage, clearConversation } = useChat()
+  const showSuggestions = messages.length === 0 && !isLoading
 
   return (
-    <main className="page">
-      <header className="header">
-        <p className="brand">BMI Chatbot</p>
-        <h1>Project scaffold is ready</h1>
-        <p className="subtitle">
-          React frontend and FastAPI backend are wired for local development.
-          Crawler and chat features will be added next.
-        </p>
-      </header>
+    <div className="app-shell">
+      <div className="app-frame">
+        <ChatHeader canClear={canClear} onClear={clearConversation} />
 
-      <section className="status" aria-live="polite">
-        <h2>Backend status</h2>
-        <p className={`badge badge-${health}`}>
-          {health === 'checking' && 'Checking API…'}
-          {health === 'healthy' && 'API healthy at /health'}
-          {health === 'unreachable' && 'API unreachable — start the backend on port 8000'}
-        </p>
-      </section>
-    </main>
+        <main className="chat-panel">
+          {showSuggestions ? (
+            <div className="empty-state">
+              <p>
+                Ask about processes, standards, and guidance published on BMI Hub. Responses include
+                source links whenever available.
+              </p>
+              <SuggestedQuestions
+                questions={SUGGESTED_QUESTIONS}
+                disabled={isLoading}
+                onSelect={(question) => void sendMessage(question)}
+              />
+            </div>
+          ) : (
+            <MessageList messages={messages} isLoading={isLoading} />
+          )}
+        </main>
+
+        {error ? (
+          <div className="error-banner" role="alert">
+            {error}
+          </div>
+        ) : null}
+
+        <ChatInput disabled={isLoading} onSend={(message) => void sendMessage(message)} />
+      </div>
+    </div>
   )
 }
 
