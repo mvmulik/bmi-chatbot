@@ -7,7 +7,7 @@ from pathlib import Path
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
-from crawler.config import CrawlerSettings
+from crawler.config import CrawlerSettings, get_allowed_hosts
 
 
 class AuthenticationError(RuntimeError):
@@ -100,8 +100,10 @@ async def probe_authenticated_session(page: Page, settings: CrawlerSettings) -> 
             return False
         # Common SSO / login markers — not definitive, but useful.
         login_markers = ("login", "signin", "sign-in", "adfs", "oauth", "saml", "auth")
-        if any(marker in url for marker in login_markers) and "bmihub.burnsmcd.com" not in url:
-            return False
+        if any(marker in url for marker in login_markers):
+            allowed = get_allowed_hosts()
+            if not any(host in url for host in allowed):
+                return False
         return True
     except Exception as exc:  # noqa: BLE001 - probe should never crash the CLI
         print(f"Session probe failed: {exc}", file=sys.stderr)

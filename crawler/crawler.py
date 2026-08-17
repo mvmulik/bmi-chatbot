@@ -330,7 +330,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--start-url",
         type=str,
         default=None,
-        help="Override start URL (must be on bmihub.burnsmcd.com).",
+        help="Override start URL (must match CRAWLER_ALLOWED_HOSTS / start-url host).",
     )
     parser.add_argument(
         "--headed",

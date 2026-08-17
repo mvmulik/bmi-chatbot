@@ -5,14 +5,32 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env")
 
+# Default only for local convenience; override via CRAWLER_START_URL in every environment.
 DEFAULT_START_URL = "https://bmihub.burnsmcd.com/"
-ALLOWED_HOSTS = frozenset({"bmihub.burnsmcd.com"})
+
+
+def get_allowed_hosts() -> frozenset[str]:
+    """Hosts permitted for crawl discovery (comma-separated or derived from start URL)."""
+    raw = os.getenv("CRAWLER_ALLOWED_HOSTS", "").strip()
+    if raw:
+        return frozenset(host.strip().lower() for host in raw.split(",") if host.strip())
+
+    start_url = os.getenv("CRAWLER_START_URL", DEFAULT_START_URL).strip() or DEFAULT_START_URL
+    hostname = urlparse(start_url).hostname
+    if hostname:
+        return frozenset({hostname.lower()})
+    return frozenset()
+
+
+# Backwards-compatible name used by extractor/tests.
+ALLOWED_HOSTS = get_allowed_hosts()
 
 
 @dataclass(frozen=True)

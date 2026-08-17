@@ -29,11 +29,23 @@ class EmbeddingSettings:
 
     @classmethod
     def from_env(cls) -> EmbeddingSettings:
+        api_key = (
+            os.getenv("OPENAI_EMBEDDING_API_KEY", "").strip()
+            or os.getenv("OPENAI_API_KEY", "").strip()
+        )
+        api_base = (
+            os.getenv("OPENAI_EMBEDDING_API_BASE", "").strip()
+            or os.getenv("OPENAI_API_BASE", "").strip()
+        )
+        api_version = (
+            os.getenv("OPENAI_EMBEDDING_API_VERSION", "").strip()
+            or os.getenv("OPENAI_API_VERSION", "2024-08-01-preview").strip()
+        )
         return cls(
             api_type=os.getenv("OPENAI_API_TYPE", "azure").strip().lower() or "azure",
-            api_key=os.getenv("OPENAI_API_KEY", "").strip(),
-            api_base=os.getenv("OPENAI_API_BASE", "").strip(),
-            api_version=os.getenv("OPENAI_API_VERSION", "2024-08-01-preview").strip(),
+            api_key=api_key,
+            api_base=api_base,
+            api_version=api_version or "2024-08-01-preview",
             azure_deployment=os.getenv("OPENAI_EMBEDDING_DEPLOYMENT_NAME", "").strip(),
             openai_model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small").strip()
             or "text-embedding-3-small",

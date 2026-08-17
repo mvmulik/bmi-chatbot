@@ -24,26 +24,33 @@ class EmbeddingProvider(ABC):
 class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
     def __init__(self, config: Settings | None = None) -> None:
         self.config = config or settings
-        if not self.config.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required for embeddings.")
+        api_key = self.config.embedding_api_key
+        api_base = self.config.embedding_api_base
+        api_version = self.config.embedding_api_version
+        if not api_key:
+            raise ValueError(
+                "OPENAI_EMBEDDING_API_KEY or OPENAI_API_KEY is required for embeddings."
+            )
 
         api_type = self.config.openai_api_type.lower()
         if api_type == "azure":
-            if not self.config.openai_api_base:
-                raise ValueError("OPENAI_API_BASE is required for Azure embeddings.")
+            if not api_base:
+                raise ValueError(
+                    "OPENAI_EMBEDDING_API_BASE or OPENAI_API_BASE is required for Azure embeddings."
+                )
             if not self.config.embedding_model:
                 raise ValueError(
                     "OPENAI_EMBEDDING_DEPLOYMENT_NAME is required for Azure embeddings."
                 )
             self._client: AzureOpenAI | OpenAI = AzureOpenAI(
-                api_key=self.config.openai_api_key,
-                api_version=self.config.openai_api_version,
-                azure_endpoint=self.config.openai_api_base,
+                api_key=api_key,
+                api_version=api_version,
+                azure_endpoint=api_base,
             )
         else:
             self._client = OpenAI(
-                api_key=self.config.openai_api_key,
-                base_url=self.config.openai_api_base or None,
+                api_key=api_key,
+                base_url=api_base or None,
             )
         self._model = self.config.embedding_model
         logger.info("Chat embedding provider ready (type=%s, model=%s)", api_type, self._model)

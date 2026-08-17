@@ -1,6 +1,9 @@
-# Environment
+# Environment files with secrets (keep *.example committed)
 .env
 .env.local
+.env.dev
+.env.test
+.env.prod
 .env.*.local
 
 # Python
@@ -27,6 +30,7 @@ htmlcov/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/.env
 *.tsbuildinfo
 
 # Playwright

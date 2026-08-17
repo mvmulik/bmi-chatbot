@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: bmi-chatbot-backend
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file:
+      - .env.local
+    environment:
+      APP_ENV: local
+      CHROMA_PERSIST_DIRECTORY: /data/chroma
+      CRAWLER_OUTPUT_DIR: /data/raw
+      CRAWLER_AUTH_DIR: /data/auth
+      CRAWLER_STORAGE_STATE_PATH: /data/auth/playwright_storage_state.json
+      PROCESSOR_RAW_DIR: /data/raw
+      PROCESSOR_OUTPUT_DIR: /data/processed
+      INDEXER_PROCESSED_DIR: /data/processed
+    volumes:
+      - ./data/raw:/data/raw
+      - ./data/processed:/data/processed
+      - ./data/chroma:/data/chroma
+      - ./data/auth:/data/auth
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    container_name: bmi-chatbot-frontend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy

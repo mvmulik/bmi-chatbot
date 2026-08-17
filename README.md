@@ -162,7 +162,24 @@ Invoke-RestMethod `
 | `scripts\test.ps1` | pytest + frontend build |
 | `scripts\verify-integration.ps1` | Live health/UI/chat+sources checks |
 
-## Verification status (this machine)
+## Deployment (LOCAL / DEV / TEST / PROD)
+
+See **[docs/deployment.md](docs/deployment.md)** for environment separation, Docker builds, CORS, auth session handling, vector DB population, smoke tests, BMI Hub URL verification, and rollback.
+
+Quick local Docker:
+
+```powershell
+Copy-Item .env.local.example .env.local
+# fill secrets in .env.local
+docker compose up --build
+```
+
+Environment templates (no secrets):
+
+- `.env.example`
+- `.env.local.example`
+- `.env.dev.example`
+- `.env.test.example`
 
 Verified locally without fake fixtures:
 

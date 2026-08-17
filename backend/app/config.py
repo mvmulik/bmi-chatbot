@@ -25,13 +25,19 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     log_level: str = "INFO"
 
+    # LLM (chat) provider
     openai_api_type: str = "azure"
     openai_api_key: str = ""
     openai_api_base: str = ""
     openai_api_version: str = "2024-08-01-preview"
     openai_deployment_name: str = ""
-    openai_embedding_deployment_name: str = ""
     openai_model: str = "gpt-4o-mini"
+
+    # Embedding provider (falls back to LLM settings when unset)
+    openai_embedding_api_key: str = ""
+    openai_embedding_api_base: str = ""
+    openai_embedding_api_version: str = ""
+    openai_embedding_deployment_name: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
 
     chroma_persist_directory: str = str(ROOT_DIR / "data" / "chroma")
@@ -66,6 +72,18 @@ class Settings(BaseSettings):
         if self.openai_api_type.lower() == "azure":
             return self.openai_embedding_deployment_name or self.openai_embedding_model
         return self.openai_embedding_model or self.openai_embedding_deployment_name
+
+    @property
+    def embedding_api_key(self) -> str:
+        return self.openai_embedding_api_key or self.openai_api_key
+
+    @property
+    def embedding_api_base(self) -> str:
+        return self.openai_embedding_api_base or self.openai_api_base
+
+    @property
+    def embedding_api_version(self) -> str:
+        return self.openai_embedding_api_version or self.openai_api_version
 
 
 settings = Settings()

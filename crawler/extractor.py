@@ -8,7 +8,7 @@ from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from crawler.config import ALLOWED_HOSTS
+from crawler.config import get_allowed_hosts
 
 
 def utc_now_iso() -> str:
@@ -61,7 +61,7 @@ def normalize_url(url: str, base_url: str | None = None) -> str | None:
 def is_internal_url(url: str) -> bool:
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower()
-    return host in ALLOWED_HOSTS
+    return host in get_allowed_hosts()
 
 
 def is_probably_html_url(url: str) -> bool:
