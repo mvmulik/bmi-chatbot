@@ -90,6 +90,19 @@ Re-authenticate later with:
 
 Output: `data\raw\crawl_<timestamp>\`
 
+`crawl.ps1` runs the crawler as a proper Python package. To invoke it directly (bypassing the
+PowerShell wrapper), run from the **project root** using `-m`:
+
+```powershell
+cd "C:\Users\mvmulik\OneDrive - Burns & McDonnell\Documents\Manali Mulik\Project\bmi-chatbot"
+python -m crawler.crawler --max-pages 50
+```
+
+`python -m crawler` (no `.crawler` suffix) also works and does the same thing via `crawler/__main__.py`.
+Do not run `python crawler\crawler.py` directly — executing the file as a script (instead of `-m`)
+breaks the package's absolute imports (e.g. `from crawler.auth import ...`) since Python does not treat
+the script's own directory as the `crawler` package in that mode.
+
 ### 4. Process content
 
 ```powershell

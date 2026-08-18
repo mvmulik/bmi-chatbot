@@ -17,7 +17,10 @@ router = APIRouter(prefix="/api/debug", tags=["debug"])
 
 
 def _configured(value: str | None) -> bool:
-    return bool(value and str(value).strip())
+    """True only if value is present and not an unfilled placeholder."""
+    if not value or not str(value).strip():
+        return False
+    return "REPLACE_WITH" not in str(value).upper()
 
 
 def _safe_error(exc: BaseException) -> str:
