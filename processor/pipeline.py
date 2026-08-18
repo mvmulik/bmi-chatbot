@@ -95,6 +95,7 @@ def process_page_record(
     for chunk in chunks:
         chunk["content_hash"] = content_hash
         chunk["source"] = "BMI Hub"
+        chunk["access"] = str(page.get("access") or "authenticated")
         chunk["scraped_date"] = cleaned.crawl_timestamp
         chunk["document_id"] = _document_id(cleaned.url, cleaned.page_title)
 
@@ -117,6 +118,7 @@ def process_page_record(
         "chunks": chunks,
         "content_hash": content_hash,
         "source": "BMI Hub",
+        "access": str(page.get("access") or "authenticated"),
         "processing_timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

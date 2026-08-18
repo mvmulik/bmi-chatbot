@@ -51,6 +51,9 @@ class CrawlerSettings:
     max_retries: int = 3
     crawl_mode: str = "incremental"
     state_path: Path = ROOT_DIR / "data" / "crawl_state.json"
+    auth_timeout_ms: int = 300_000
+    auth_selectors: str = ""
+    ignore_https_errors: bool = True
 
     @classmethod
     def from_env(cls) -> CrawlerSettings:
@@ -83,4 +86,8 @@ class CrawlerSettings:
                     str(ROOT_DIR / "data" / "crawl_state.json"),
                 )
             ),
+            auth_timeout_ms=int(os.getenv("CRAWLER_AUTH_TIMEOUT_MS", "300000")),
+            auth_selectors=os.getenv("CRAWLER_AUTH_SELECTORS", "").strip(),
+            ignore_https_errors=os.getenv("CRAWLER_IGNORE_HTTPS_ERRORS", "true").lower()
+            in {"1", "true", "yes"},
         )

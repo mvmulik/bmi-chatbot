@@ -89,6 +89,12 @@ def _distance_to_relevance(distance: float | None) -> float:
     return max(0.0, min(1.0, relevance))
 
 
+def _authorized_metadata(metadata: dict[str, Any] | None) -> bool:
+    """Keep only content collected under an authorized BMI Hub session."""
+    access = str((metadata or {}).get("access") or "authenticated").strip().lower()
+    return access in {"authenticated", "authorized"}
+
+
 def _chunk_from_row(
     *,
     chunk_id: str,
@@ -269,6 +275,8 @@ class ChromaRetriever:
             fused = reciprocal_rank_fusion([vector_chunks, keyword_chunks])
         else:
             fused = vector_chunks
+
+        fused = [chunk for chunk in fused if _authorized_metadata(chunk.metadata)]
 
         query_lower = query.lower()
         fused.sort(

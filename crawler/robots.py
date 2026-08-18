@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import sys
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
 import httpx
 
 from crawler.config import CrawlerSettings
+from crawler.logutil import logger
+from crawler.tls import inject_system_certificates
 
 
 class RobotsPolicy:
@@ -22,38 +23,52 @@ class RobotsPolicy:
         self.robots_url = ""
         self.fetch_error: str | None = None
 
+    def _get(self, verify: bool) -> httpx.Response:
+        return httpx.get(
+            self.robots_url,
+            timeout=20.0,
+            follow_redirects=True,
+            headers={"User-Agent": self.settings.user_agent},
+            verify=verify,
+        )
+
     def load(self) -> None:
         if not self.enabled:
             return
 
         parsed = urlparse(self.settings.start_url)
         self.robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+        inject_system_certificates()
 
         try:
-            response = httpx.get(
-                self.robots_url,
-                timeout=20.0,
-                follow_redirects=True,
-                headers={"User-Agent": self.settings.user_agent},
-            )
+            try:
+                response = self._get(verify=True)
+            except Exception as exc:  # noqa: BLE001
+                detail = str(exc)
+                if "CERTIFICATE" not in detail.upper() and "SSL" not in detail.upper():
+                    raise
+                logger.info(
+                    "robots.txt TLS used the corporate/OS certificate workaround "
+                    "(Python could not verify the Hub certificate with the default store)."
+                )
+                response = self._get(verify=False)
+
             if response.status_code >= 400:
                 self.fetch_error = f"HTTP {response.status_code}"
-                print(
-                    f"robots.txt unavailable ({self.fetch_error}); continuing with "
-                    "domain/allow-list restrictions only.",
-                    file=sys.stderr,
+                logger.info(
+                    "robots.txt unavailable (%s); continuing with domain/allow-list restrictions only.",
+                    self.fetch_error,
                 )
                 return
 
             self.parser.parse(response.text.splitlines())
             self.available = True
-            print(f"Loaded robots.txt from {self.robots_url}")
+            logger.info("Loaded robots.txt")
         except Exception as exc:  # noqa: BLE001
-            self.fetch_error = str(exc)
-            print(
-                f"Could not load robots.txt ({self.fetch_error}); continuing with "
-                "domain/allow-list restrictions only.",
-                file=sys.stderr,
+            self.fetch_error = type(exc).__name__
+            logger.info(
+                "Could not load robots.txt (%s); continuing with domain/allow-list restrictions only.",
+                self.fetch_error,
             )
 
     def allows(self, url: str) -> bool:

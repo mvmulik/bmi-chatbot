@@ -87,7 +87,7 @@ Full recrawl:
 .\scripts\crawl.ps1 -Mode full -MaxPages 200
 ```
 
-First run opens a browser for manual SSO login. Press Enter in the terminal after you are signed in.  
+First run opens a headed browser for normal BMI Hub SSO/MFA. Complete login in that window (you have up to 5 minutes). The crawler continues when it sees BMI Hub content — not the Microsoft sign-in page. It does not collect passwords or MFA codes. If auto-detect times out, press Enter once Hub is visible. Session state is saved under `data/auth/` (gitignored). If the session expires mid-crawl, the queue pauses for the same login flow and then resumes.  
 Re-authenticate later with:
 
 ```powershell

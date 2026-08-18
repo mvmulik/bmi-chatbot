@@ -65,6 +65,15 @@ def is_internal_url(url: str) -> bool:
     return host in get_allowed_hosts()
 
 
+def is_allowed_url(url: str) -> bool:
+    """Approved BMI Hub pages only: HTTPS on an allowed host."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return False
+    host = (parsed.hostname or "").lower()
+    return host in get_allowed_hosts()
+
+
 def is_probably_html_url(url: str) -> bool:
     """Skip obvious binary/asset URLs during crawl discovery."""
     path = urlparse(url).path.lower()
@@ -198,6 +207,7 @@ def extract_page_content(
     links = _extract_links(soup, final_url or url)
     visible_text = _visible_text(soup)
 
+    scraped_at = utc_now_iso()
     return {
         "url": url,
         "final_url": final_url,
@@ -205,10 +215,13 @@ def extract_page_content(
         "page_title": title,
         "headings": _extract_headings(soup),
         "visible_text": visible_text,
+        "content": visible_text,
         "content_hash": generate_content_hash(f"{title}\n{visible_text}"),
         "source": "BMI Hub",
+        "access": "authenticated",
+        "scraped_at": scraped_at,
         "navigation": _extract_navigation(soup, final_url or url),
         "links": links,
         "html": html,
-        "crawl_timestamp": utc_now_iso(),
+        "crawl_timestamp": scraped_at,
     }

@@ -74,5 +74,6 @@ def test_process_page_record_attaches_metadata_to_chunks() -> None:
         assert chunk["page_title"] == "Safety Guide"
         assert chunk["source_type"] == "bmi_hub_page"
         assert chunk["source"] == "BMI Hub"
+        assert chunk["access"] == "authenticated"
         assert "content_hash" in chunk
         assert "text" in chunk

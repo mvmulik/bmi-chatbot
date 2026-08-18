@@ -22,21 +22,26 @@ from playwright.async_api import async_playwright
 from crawler.auth import (
     AuthenticationError,
     create_authenticated_context,
+    interactive_login,
     probe_authenticated_session,
     refresh_storage_state,
     storage_state_exists,
 )
+from crawler.auth_signals import looks_like_access_denied, looks_like_login_url
 from crawler.config import CrawlerSettings
 from crawler.discover import is_document_url
 from crawler.extractor import (
     extract_page_content,
+    is_allowed_url,
     is_internal_url,
     is_probably_html_url,
     normalize_url,
     utc_now_iso,
 )
 from crawler.hashing import generate_content_hash
+from crawler.logutil import configure_crawler_logging, log_path, logger, redact
 from crawler.robots import RobotsPolicy
+from crawler.tls import inject_system_certificates
 from crawler.state_store import (
     STATUS_ACCESS_DENIED,
     STATUS_FAILED,
@@ -96,14 +101,6 @@ def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def _looks_like_access_denied(status: int | None, page_url: str, title: str, html: str) -> bool:
-    if status in {401, 403}:
-        return True
-    haystack = f"{page_url} {title} {html[:2000]}".lower()
-    markers = ("access denied", "401 unauthorized", "403 forbidden", "you don't have access")
-    return any(marker in haystack for marker in markers)
-
-
 class BmiHubCrawler:
     def __init__(
         self,
@@ -137,6 +134,15 @@ class BmiHubCrawler:
             if normalized not in self.state.external_links:
                 self.state.external_links.add(normalized)
                 self.state.stats.external_links += 1
+                logger.info("URL skipped (external): %s", log_path(normalized))
+            return
+
+        if not is_allowed_url(normalized):
+            self.state.skipped.append(
+                {"url": normalized, "reason": "not_approved_https_hub_url", "source": source}
+            )
+            self.state.stats.skipped_pages += 1
+            logger.info("URL skipped: %s", log_path(normalized))
             return
 
         if is_document_url(normalized):
@@ -194,6 +200,7 @@ class BmiHubCrawler:
         self.state.queue.append((normalized, depth))
         self.state.queued.add(normalized)
         self.state.stats.total_pages_discovered += 1
+        logger.info("URL discovered: %s", log_path(normalized))
         if self.store.get(normalized) is None:
             self.store.upsert(normalized, status="PENDING")
 
@@ -213,7 +220,33 @@ class BmiHubCrawler:
             for url in self.store.failed_or_pending_urls():
                 self._enqueue(url, 0, source="retry_state")
 
+    async def _recover_session(self, playwright: Any) -> tuple[Any, Any, Any]:
+        """Pause the queue, complete normal browser login, then resume."""
+        logger.info("Starting interactive BMI Hub login")
+        if not self.allow_interactive:
+            raise AuthenticationError(
+                "BMI Hub session expired and interactive login is disabled."
+            )
+        await interactive_login(self.settings)
+        browser = await playwright.chromium.launch(headless=self.settings.headless)
+        context = await create_authenticated_context(
+            browser,
+            self.settings,
+            force_reauth=False,
+        )
+        page = await context.new_page()
+        page.set_default_timeout(self.settings.navigation_timeout_ms)
+        if not await probe_authenticated_session(page, self.settings):
+            await context.close()
+            await browser.close()
+            raise AuthenticationError("BMI Hub authentication was not verified after login.")
+        logger.info("Authentication successful")
+        return browser, context, page
+
     async def run(self) -> Path:
+        configure_crawler_logging()
+        inject_system_certificates()
+        logger.info("BMI Hub crawler started")
         self.settings.output_dir.mkdir(parents=True, exist_ok=True)
         self.pages_dir.mkdir(parents=True, exist_ok=True)
         self.robots.load()
@@ -226,6 +259,7 @@ class BmiHubCrawler:
 
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=self.settings.headless)
+            context = None
             try:
                 context = await create_authenticated_context(
                     browser,
@@ -240,18 +274,9 @@ class BmiHubCrawler:
                         raise AuthenticationError(
                             "Saved BMI Hub session is invalid and interactive login is disabled."
                         )
-                    print(
-                        "Saved session appears invalid. Starting interactive login…",
-                        file=sys.stderr,
-                    )
                     await context.close()
-                    context = await create_authenticated_context(
-                        browser,
-                        self.settings,
-                        force_reauth=True,
-                    )
-                    page = await context.new_page()
-                    page.set_default_timeout(self.settings.navigation_timeout_ms)
+                    await browser.close()
+                    browser, context, page = await self._recover_session(playwright)
 
                 while self.state.queue and len(self.state.successful) < self.settings.max_pages:
                     url, depth = self.state.queue.popleft()
@@ -259,17 +284,28 @@ class BmiHubCrawler:
                         self.state.stats.duplicate_links += 1
                         continue
 
+                    outcome = await self._crawl_one(page, url, depth)
+                    if outcome == "SESSION_EXPIRED":
+                        await context.close()
+                        await browser.close()
+                        browser, context, page = await self._recover_session(playwright)
+                        self.state.queue.appendleft((url, depth))
+                        continue
+
                     self.state.visited.add(url)
-                    await self._crawl_one(page, url, depth)
                     await asyncio.sleep(self.settings.request_delay_seconds)
 
                 await refresh_storage_state(context, self.settings)
                 await context.close()
             finally:
-                await browser.close()
+                try:
+                    await browser.close()
+                except Exception:  # noqa: BLE001 - browser may already be closed after re-auth
+                    pass
 
         self.store.save()
         report_path = self._write_report()
+        logger.info("Crawl completed")
         print(f"Crawl complete. Report: {report_path}")
         return report_path
 
@@ -288,13 +324,17 @@ class BmiHubCrawler:
                 await asyncio.sleep(min(2 * attempt, 6))
         raise last_error or PlaywrightError(f"Failed to open {url}")
 
-    async def _crawl_one(self, page: Any, url: str, depth: int) -> None:
-        print(f"[{len(self.state.successful) + 1}/{self.settings.max_pages}] depth={depth} {url}")
+    async def _crawl_one(self, page: Any, url: str, depth: int) -> str:
+        logger.info("Crawling: %s", log_path(url))
         previous = self.store.get(url)
         self.store.upsert(url, status="PROCESSING")
         try:
             _response, status = await self._goto_with_retries(page, url)
             final_url = normalize_url(page.url) or page.url
+
+            if looks_like_login_url(final_url):
+                logger.warning("Authentication expired")
+                return "SESSION_EXPIRED"
 
             if status is not None and status >= 400:
                 access_denied = status in {401, 403}
@@ -305,7 +345,7 @@ class BmiHubCrawler:
                     status_code=status,
                     message=f"HTTP {status}",
                 )
-                return
+                return "FAILED"
 
             html = await page.content()
             extracted = extract_page_content(
@@ -315,15 +355,20 @@ class BmiHubCrawler:
                 status_code=status,
             )
             title = str(extracted.get("page_title") or "")
-            if _looks_like_access_denied(status, final_url, title, html):
+            if looks_like_access_denied(
+                status=status,
+                page_url=final_url,
+                title=title,
+                html_excerpt=html,
+            ):
                 self._record_failure(
                     url,
                     final_url=final_url,
                     error_type="ACCESS_DENIED",
                     status_code=status,
-                    message="Access denied or login page detected",
+                    message="Access denied",
                 )
-                return
+                return "FAILED"
 
             extracted["depth"] = depth
             content_hash = str(extracted.get("content_hash") or generate_content_hash(html))
@@ -346,6 +391,7 @@ class BmiHubCrawler:
                     status=STATUS_SKIPPED,
                     error="",
                 )
+                logger.info("Page unchanged: %s", log_path(url))
             else:
                 out_path = self.pages_dir / f"{_slug_for_url(url)}.json"
                 _write_json(out_path, extracted)
@@ -355,8 +401,10 @@ class BmiHubCrawler:
                 status_name = STATUS_PROCESSED if is_new else STATUS_UPDATED
                 if is_new:
                     self.state.stats.new_pages += 1
+                    logger.info("Content extracted: %s", log_path(url))
                 else:
                     self.state.stats.updated_pages += 1
+                    logger.info("Page updated: %s", log_path(url))
                 self.store.upsert(
                     url,
                     title=title,
@@ -375,19 +423,22 @@ class BmiHubCrawler:
             for link in extracted.get("links", []):
                 link_url = link.get("url", "")
                 self._enqueue(link_url, depth + 1, source=url)
+            return "OK"
 
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
             self._record_failure(
                 url,
                 error_type="playwright_error",
-                message=str(exc),
+                message=redact(str(exc)),
             )
+            return "FAILED"
         except Exception as exc:  # noqa: BLE001 - record unexpected page failures
             self._record_failure(
                 url,
                 error_type="unexpected_error",
-                message=str(exc),
+                message=redact(str(exc)),
             )
+            return "FAILED"
 
     def _record_failure(
         self,
@@ -402,15 +453,19 @@ class BmiHubCrawler:
         record = {
             "url": url,
             "final_url": final_url,
+            "status": "ACCESS_DENIED" if access_denied else error_type,
             "error_type": error_type,
             "status_code": status_code,
-            "message": message,
+            "message": redact(message),
             "timestamp": utc_now_iso(),
         }
         self.state.failed.append(record)
         self.state.stats.failed_pages += 1
         if access_denied:
             self.state.stats.access_denied_pages += 1
+            logger.warning("Access denied: %s", log_path(url))
+        else:
+            logger.warning("URL failed: %s", log_path(url))
         self.store.upsert(
             url,
             status=STATUS_ACCESS_DENIED if access_denied else STATUS_FAILED,
@@ -533,6 +588,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 async def async_main(argv: list[str] | None = None) -> int:
+    configure_crawler_logging()
     args = build_arg_parser().parse_args(argv)
     settings = CrawlerSettings.from_env()
 
@@ -559,7 +615,8 @@ async def async_main(argv: list[str] | None = None) -> int:
     try:
         await crawler.run()
     except AuthenticationError as exc:
-        print(f"Authentication failed: {exc}", file=sys.stderr)
+        logger.warning("Authentication failed")
+        print(redact(str(exc)), file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print("Crawl interrupted by user.", file=sys.stderr)

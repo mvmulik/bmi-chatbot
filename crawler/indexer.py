@@ -31,6 +31,7 @@ METADATA_KEYS = (
     "crawl_timestamp",
     "source_type",
     "source",
+    "access",
     "content_hash",
     "scraped_date",
     "token_count",
