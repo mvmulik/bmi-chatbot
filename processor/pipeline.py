@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from crawler.hashing import generate_content_hash
 from processor.chunker import ChunkingConfig, chunk_document
 from processor.cleaner import clean_from_crawled_page
 from processor.config import ProcessorSettings
@@ -90,6 +91,12 @@ def process_page_record(
             min_chunk_tokens=settings.min_chunk_tokens,
         ),
     )
+    content_hash = str(page.get("content_hash") or generate_content_hash(cleaned.cleaned_text))
+    for chunk in chunks:
+        chunk["content_hash"] = content_hash
+        chunk["source"] = "BMI Hub"
+        chunk["scraped_date"] = cleaned.crawl_timestamp
+        chunk["document_id"] = _document_id(cleaned.url, cleaned.page_title)
 
     return {
         "document_id": _document_id(cleaned.url, cleaned.page_title),
@@ -108,6 +115,8 @@ def process_page_record(
         ),
         "chunk_count": len(chunks),
         "chunks": chunks,
+        "content_hash": content_hash,
+        "source": "BMI Hub",
         "processing_timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

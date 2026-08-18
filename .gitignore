@@ -48,6 +48,7 @@ data/processed/*
 !data/processed/.gitkeep
 data/chroma/*
 !data/chroma/.gitkeep
+data/crawl_state.json
 
 # IDE / OS
 .idea/

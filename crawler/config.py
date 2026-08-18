@@ -48,6 +48,9 @@ class CrawlerSettings:
     )
     respect_robots: bool = True
     headless: bool = True
+    max_retries: int = 3
+    crawl_mode: str = "incremental"
+    state_path: Path = ROOT_DIR / "data" / "crawl_state.json"
 
     @classmethod
     def from_env(cls) -> CrawlerSettings:
@@ -71,4 +74,13 @@ class CrawlerSettings:
             respect_robots=os.getenv("CRAWLER_RESPECT_ROBOTS", "true").lower()
             in {"1", "true", "yes"},
             headless=os.getenv("CRAWLER_HEADLESS", "true").lower() in {"1", "true", "yes"},
+            max_retries=int(os.getenv("CRAWLER_MAX_RETRIES", "3")),
+            crawl_mode=os.getenv("CRAWLER_MODE", "incremental").strip().lower()
+            or "incremental",
+            state_path=Path(
+                os.getenv(
+                    "CRAWLER_STATE_PATH",
+                    str(ROOT_DIR / "data" / "crawl_state.json"),
+                )
+            ),
         )

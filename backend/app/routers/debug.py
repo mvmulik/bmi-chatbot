@@ -158,9 +158,12 @@ def debug_rag() -> dict[str, Any]:
 
 
 @router.get("/search")
-def debug_search(q: str = Query(..., min_length=1, max_length=2000)) -> dict[str, Any]:
+def debug_search(
+    q: str = Query(..., min_length=1, max_length=2000),
+    top_k: int = Query(5, ge=1, le=20),
+) -> dict[str, Any]:
     """Run Chroma similarity search only (no LLM)."""
-    logger.info("debug/search q_chars=%s", len(q))
+    logger.info("debug/search q_chars=%s top_k=%s", len(q), top_k)
     try:
         embedder = create_embedding_provider(settings)
         retriever = ChromaRetriever(embedder, settings)
@@ -179,7 +182,7 @@ def debug_search(q: str = Query(..., min_length=1, max_length=2000)) -> dict[str
         query_embedding = embedder.embed_query(q)
         raw = collection.query(
             query_embeddings=[query_embedding],
-            n_results=min(settings.rag_top_k, count),
+            n_results=min(top_k, count),
             include=["documents", "metadatas", "distances"],
         )
         documents = (raw.get("documents") or [[]])[0]
@@ -205,13 +208,14 @@ def debug_search(q: str = Query(..., min_length=1, max_length=2000)) -> dict[str
                     "section": metadata.get("section") or metadata.get("heading") or "",
                     "distance": distance,
                     "relevance": relevance,
-                    "preview": (doc or "")[:240],
+                    "preview": (doc or "")[:200],
                 }
             )
 
         return {
             "query": q,
             "document_count": count,
+            "top_k": top_k,
             "result_count": len(results),
             "results": results,
             "error": None,

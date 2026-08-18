@@ -2,6 +2,8 @@
 param(
     [int]$MaxPages = 50,
     [int]$MaxDepth = 8,
+    [ValidateSet("full", "incremental")]
+    [string]$Mode = "incremental",
     [switch]$Reauth,
     [switch]$Headed,
     [string]$StartUrl = "",
@@ -25,6 +27,7 @@ if ($InstallDeps) {
 
 $argsList = @(
     "-m", "crawler",
+    "--mode", $Mode,
     "--max-pages", "$MaxPages",
     "--max-depth", "$MaxDepth"
 )

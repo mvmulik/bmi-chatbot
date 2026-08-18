@@ -78,7 +78,13 @@ cd "C:\Users\mvmulik\OneDrive - Burns & McDonnell\Documents\Manali Mulik\Project
 
 ```powershell
 cd "C:\Users\mvmulik\OneDrive - Burns & McDonnell\Documents\Manali Mulik\Project\bmi-chatbot"
-.\scripts\crawl.ps1 -MaxPages 50
+.\scripts\crawl.ps1 -Mode incremental -MaxPages 50
+```
+
+Full recrawl:
+
+```powershell
+.\scripts\crawl.ps1 -Mode full -MaxPages 200
 ```
 
 First run opens a browser for manual SSO login. Press Enter in the terminal after you are signed in.  
@@ -89,6 +95,13 @@ Re-authenticate later with:
 ```
 
 Output: `data\raw\crawl_<timestamp>\`
+
+To crawl, process, and index in one step:
+
+```powershell
+.\scripts\pipeline.ps1 -Mode incremental -MaxPages 50
+.\scripts\pipeline.ps1 -Mode full -MaxPages 200
+```
 
 `crawl.ps1` runs the crawler as a proper Python package. To invoke it directly (bypassing the
 PowerShell wrapper), run from the **project root** using `-m`:
@@ -169,7 +182,8 @@ Invoke-RestMethod `
 | --- | --- |
 | `scripts\start-backend.ps1` | Start FastAPI on port 8000 |
 | `scripts\start-frontend.ps1` | Start Vite UI on port 5173 |
-| `scripts\crawl.ps1` | Authenticated BMI Hub crawl |
+| `scripts\crawl.ps1` | Authenticated BMI Hub crawl (`-Mode full` or `incremental`) |
+| `scripts\pipeline.ps1` | Crawl → process → index with a crawl report |
 | `scripts\process.ps1` | Clean + chunk raw crawl output |
 | `scripts\index.ps1` | full / incremental / stats / clear Chroma index |
 | `scripts\test.ps1` | pytest + frontend build |
@@ -200,7 +214,7 @@ Verified locally without fake fixtures:
 - Frontend starts (`.\scripts\start-frontend.ps1`)
 - `GET /health` and `GET /api/health` return healthy
 - Frontend loads BMI Hub Assistant UI and can reach the backend API base URL
-- `.\scripts\test.ps1` — 22 pytest tests + frontend build passed
+- `.\scripts\test.ps1` — 39 pytest tests + frontend build passed
 
 Not yet verifiable until you complete the data pipeline on this machine:
 
@@ -224,3 +238,4 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 - Do not put API keys in the React app. Only `VITE_API_BASE_URL` belongs in `frontend/.env`.
 - Chat answers are grounded in indexed BMI Hub content only.
+- If retrieval is weak, the backend can discover additional BMI Hub pages (saved SSO session required, no credential bypass) and re-index before answering, up to 5 iterations.

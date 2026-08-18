@@ -45,6 +45,7 @@ def build_chunk_metadata(
         "heading": heading,
         "crawl_timestamp": crawl_timestamp,
         "source_type": source_type,
+        "source": "BMI Hub",
     }
     if extra:
         metadata.update(extra)

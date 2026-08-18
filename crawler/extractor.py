@@ -9,6 +9,7 @@ from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from crawler.config import get_allowed_hosts
+from crawler.hashing import generate_content_hash
 
 
 def utc_now_iso() -> str:
@@ -195,6 +196,7 @@ def extract_page_content(
     soup = BeautifulSoup(html, "lxml")
     title = " ".join((soup.title.get_text(" ", strip=True) if soup.title else "").split())
     links = _extract_links(soup, final_url or url)
+    visible_text = _visible_text(soup)
 
     return {
         "url": url,
@@ -202,7 +204,9 @@ def extract_page_content(
         "status_code": status_code,
         "page_title": title,
         "headings": _extract_headings(soup),
-        "visible_text": _visible_text(soup),
+        "visible_text": visible_text,
+        "content_hash": generate_content_hash(f"{title}\n{visible_text}"),
+        "source": "BMI Hub",
         "navigation": _extract_navigation(soup, final_url or url),
         "links": links,
         "html": html,

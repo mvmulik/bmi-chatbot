@@ -30,6 +30,9 @@ METADATA_KEYS = (
     "heading",
     "crawl_timestamp",
     "source_type",
+    "source",
+    "content_hash",
+    "scraped_date",
     "token_count",
     "document_id",
 )
@@ -226,6 +229,40 @@ class VectorIndexer:
             existing.update(result.get("ids") or [])
         return existing
 
+    def _replace_changed_urls(
+        self,
+        collection: Collection,
+        records: Sequence[dict[str, Any]],
+    ) -> int:
+        """Remove stale vectors when a page's content_hash has changed."""
+        deleted = 0
+        hashes_by_url: dict[str, set[str]] = {}
+        for record in records:
+            url = str(record["metadata"].get("url") or "")
+            content_hash = str(record["metadata"].get("content_hash") or "")
+            if url and content_hash:
+                hashes_by_url.setdefault(url, set()).add(content_hash)
+
+        for url, hashes in hashes_by_url.items():
+            try:
+                existing = collection.get(where={"url": url}, include=["metadatas"])
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Could not load existing chunks for %s: %s", url, exc)
+                continue
+            ids = existing.get("ids") or []
+            metadatas = existing.get("metadatas") or []
+            stale_ids: list[str] = []
+            for index, chunk_id in enumerate(ids):
+                metadata = metadatas[index] if index < len(metadatas) else {}
+                old_hash = str((metadata or {}).get("content_hash") or "")
+                if old_hash and old_hash not in hashes:
+                    stale_ids.append(chunk_id)
+            if stale_ids:
+                collection.delete(ids=stale_ids)
+                deleted += len(stale_ids)
+                logger.info("Removed %s stale chunks for changed URL %s", len(stale_ids), url)
+        return deleted
+
     def _upsert_records(
         self,
         collection: Collection,
@@ -318,6 +355,7 @@ class VectorIndexer:
         records = normalize_chunk_records(raw_chunks)
         invalid = valid_count_before - len(records)
         skipped_existing = 0
+        replaced_changed = 0
         # Ensure collection metadata records the embedding model used.
         collection = self._get_or_create_collection()
         try:
@@ -330,6 +368,7 @@ class VectorIndexer:
             logger.debug("Could not update collection metadata: %s", exc)
 
         if incremental and records:
+            replaced_changed = self._replace_changed_urls(collection, records)
             existing = self._existing_ids(collection, [item["id"] for item in records])
             before = len(records)
             records = [item for item in records if item["id"] not in existing]

@@ -5,11 +5,18 @@ import uuid
 from dataclasses import dataclass
 
 from app.config import Settings, settings
+from app.constants import INSUFFICIENT_ANSWER
 from app.prompts import SYSTEM_PROMPT, build_user_prompt
 from app.schemas.chat import ChatRequest, ChatResponse, Source
+from app.services.conversation import ConversationStore, get_conversation_store
 from app.services.embeddings import EmbeddingProvider, create_embedding_provider
+from app.services.knowledge import (
+    CatalogDiscoverer,
+    KnowledgeLoop,
+    LiveCrawlIngestor,
+)
 from app.services.llm import LLMClient
-from app.services.retriever import ChromaRetriever, RetrievedChunk
+from app.services.retriever import ChromaRetriever, RetrievedChunk, context_is_sufficient
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +30,8 @@ class RagDependencies:
     embedder: EmbeddingProvider
     retriever: ChromaRetriever
     llm: LLMClient
+    conversations: ConversationStore | None = None
+    knowledge_loop: KnowledgeLoop | None = None
 
 
 class RagService:
@@ -48,10 +57,17 @@ class RagService:
             )
             logger.info("RAG deps init: creating LLM client")
             llm = LLMClient(self.config)
+            loop = KnowledgeLoop(
+                discoverer=CatalogDiscoverer(),
+                ingestor=LiveCrawlIngestor(self.config) if self.config.rag_query_time_crawl else None,
+                max_iterations=self.config.rag_max_iterations,
+            )
             self._deps = RagDependencies(
                 embedder=embedder,
                 retriever=retriever,
                 llm=llm,
+                conversations=get_conversation_store(),
+                knowledge_loop=loop,
             )
             logger.info("RAG deps init: complete")
         return self._deps
@@ -86,10 +102,23 @@ class RagService:
                     title=chunk.title,
                     url=chunk.url,
                     section=chunk.section,
-                    relevance=round(chunk.relevance, 4),
+                    relevance=round(min(1.0, max(0.0, chunk.relevance)), 4),
                 )
             )
         return sources
+
+    def _history_text(self, conversation_id: str) -> str:
+        store = self.deps.conversations
+        if store is None:
+            return ""
+        turns = store.get(conversation_id)
+        if not turns:
+            return ""
+        latest = turns[-1]
+        return f"Previous question: {latest.question}\nPrevious answer: {latest.answer[:500]}"
+
+    def _insufficient(self) -> ChatResponse:
+        return ChatResponse(answer=INSUFFICIENT_ANSWER, sources=[])
 
     def chat(self, request: ChatRequest) -> ChatResponse:
         conversation_id = request.conversation_id or str(uuid.uuid4())
@@ -98,12 +127,15 @@ class RagService:
             conversation_id,
             len(request.message),
         )
+        store = self.deps.conversations
+        query = request.message
+        if store is not None:
+            query = store.expand_query(conversation_id, request.message)
 
         try:
             logger.info("RAG stage=deps_and_retrieve conversationId=%s", conversation_id)
-            chunks = self.deps.retriever.search(request.message)
+            chunks = self.deps.retriever.search(query)
         except Exception as exc:  # noqa: BLE001
-            # Preserve the underlying cause in logs; keep a stable client-facing prefix.
             logger.exception(
                 "Retrieval failed stage=embedding_or_chroma type=%s detail=%s",
                 type(exc).__name__,
@@ -113,22 +145,32 @@ class RagService:
                 f"Failed to retrieve relevant BMI Hub content. ({type(exc).__name__}: {exc})"
             ) from exc
 
-        if not chunks:
-            answer = (
-                "I could not find relevant information in the available BMI Hub content "
-                "for that question."
+        loop = self.deps.knowledge_loop
+        if loop is not None and not context_is_sufficient(
+            chunks,
+            query,
+            min_relevance=self.config.rag_min_relevance,
+        ):
+            chunks = loop.fill_gaps(
+                query,
+                chunks,
+                retrieve=self.deps.retriever.search,
+                min_relevance=self.config.rag_min_relevance,
             )
-            chroma_count = None
-            try:
-                chroma_count = self.deps.retriever.count()
-            except Exception:  # noqa: BLE001
-                chroma_count = "unavailable"
+
+        if not context_is_sufficient(
+            chunks,
+            query,
+            min_relevance=self.config.rag_min_relevance,
+        ):
             logger.warning(
-                "RAG stage=empty_context conversationId=%s chroma_count=%s",
+                "RAG stage=insufficient_context conversationId=%s chunks=%s",
                 conversation_id,
-                chroma_count,
+                len(chunks),
             )
-            return ChatResponse(answer=answer, sources=[])
+            if store is not None:
+                store.add(conversation_id, request.message, INSUFFICIENT_ANSWER)
+            return self._insufficient()
 
         context_blocks = self._build_context(chunks)
         logger.info(
@@ -137,7 +179,11 @@ class RagService:
             len(chunks),
             len(context_blocks),
         )
-        user_prompt = build_user_prompt(question=request.message, context_blocks=context_blocks)
+        user_prompt = build_user_prompt(
+            question=request.message,
+            context_blocks=context_blocks,
+            conversation_context=self._history_text(conversation_id),
+        )
 
         try:
             logger.info("RAG stage=llm_complete conversationId=%s", conversation_id)
@@ -156,6 +202,8 @@ class RagService:
             ) from exc
 
         sources = self._to_sources(chunks)
+        if store is not None:
+            store.add(conversation_id, request.message, answer)
         logger.info(
             "RAG chat complete conversationId=%s sources=%s answer_chars=%s",
             conversation_id,

@@ -26,6 +26,7 @@ class Source(BaseModel):
     url: str
     section: str
     relevance: float = Field(..., ge=0.0, le=1.0)
+    source: str = "BMI Hub"
 
 
 class ChatResponse(BaseModel):

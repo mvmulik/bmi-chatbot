@@ -1,9 +1,13 @@
+import sys
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 
 class Settings(BaseSettings):
@@ -47,6 +51,15 @@ class Settings(BaseSettings):
     rag_max_context_chars: int = 12000
     rag_temperature: float = 0.1
     rag_max_output_tokens: int = 800
+    rag_min_relevance: float = 0.28
+    rag_max_iterations: int = 5
+    rag_hybrid_search: bool = True
+    rag_hybrid_candidate_k: int = 12
+    rag_query_time_crawl: bool = True
+    rag_query_time_max_pages: int = 3
+    rag_max_loop_iterations: int = 5
+    rag_live_crawl: bool = True
+    rag_live_crawl_max_pages: int = 3
     embedding_provider: str = ""
     embedding_batch_size: int = 64
 
