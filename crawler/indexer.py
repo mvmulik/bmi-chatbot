@@ -89,9 +89,12 @@ def configure_logging(verbose: bool = False) -> None:
 def _newest_process_dir(processed_dir: Path) -> Path | None:
     if not processed_dir.exists():
         return None
+    # Sort by modification time, not folder name, so a non-timestamped directory can
+    # never be mistaken for the most recent run just because it sorts alphabetically
+    # later (see the equivalent fix in processor/pipeline.py's discover_page_files).
     runs = sorted(
         [path for path in processed_dir.glob("process_*") if path.is_dir()],
-        key=lambda path: path.name,
+        key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
     return runs[0] if runs else None
