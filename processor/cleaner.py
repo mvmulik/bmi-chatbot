@@ -88,14 +88,39 @@ def _attr_blob(tag: Tag) -> str:
     return " ".join(parts).lower()
 
 
+def _attr_tokens(tag: Tag) -> set[str]:
+    """Whole-word tokens from id/class/etc, split on non-alphanumeric boundaries.
+
+    Using tokens (not raw substring containment) avoids false positives like a
+    KendoReact grid classed ``allMenu`` — real page content — being mistaken for
+    navigation chrome just because it contains "menu" as part of a longer word.
+    """
+    return set(re.findall(r"[a-z0-9]+", _attr_blob(tag)))
+
+
+# Attribute-hint matches (class/id/aria-label containing e.g. "menu" or "nav") are a
+# heuristic, unlike a semantic <nav>/<footer> tag or role="navigation" which are chrome
+# by definition regardless of size. Some app shells name an outer layout wrapper
+# something like "fixed-header-menu-container" that also happens to wrap the *entire*
+# page body beneath a sticky header. Trust the attribute heuristic only when the
+# candidate's own text is short enough to plausibly be real navigation/menu/footer
+# chrome, not an entire page of content.
+_CHROME_HINT_TEXT_LIMIT = 800
+
+
 def _looks_like_chrome(tag: Tag) -> bool:
     if tag.name in NAV_FOOTER_TAGS:
         return True
     role = str(tag.get("role", "")).lower()
     if role in {"navigation", "contentinfo", "banner", "complementary"}:
         return True
-    blob = _attr_blob(tag)
-    return any(hint in blob for hint in NAV_FOOTER_ATTR_HINTS)
+    tokens = _attr_tokens(tag)
+    hinted = any(
+        all(part in tokens for part in hint.split("-")) for hint in NAV_FOOTER_ATTR_HINTS
+    )
+    if not hinted:
+        return False
+    return len(tag.get_text(strip=True)) <= _CHROME_HINT_TEXT_LIMIT
 
 
 def _is_footer_boilerplate(text: str) -> bool:
@@ -157,8 +182,14 @@ def _main_content_root(soup: BeautifulSoup) -> Tag:
 
 
 def _strip_noise(root: Tag) -> None:
+    # find_all materializes every descendant tag up front, but decomposing an outer
+    # tag (e.g. <nav>) also detaches/decomposes its children in place. Later iterations
+    # can therefore reach a tag whose .attrs was already reset to None by BeautifulSoup;
+    # skip anything no longer attached to the tree before touching its attributes.
     for tag in list(root.find_all(True)):
         if not isinstance(tag, Tag):
+            continue
+        if tag.attrs is None or tag.parent is None:
             continue
         if tag.name in NOISE_TAGS:
             tag.decompose()

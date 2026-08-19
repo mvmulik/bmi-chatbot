@@ -59,9 +59,12 @@ def discover_page_files(raw_dir: Path, crawl_dir: Path | None = None) -> list[Pa
     if not raw_dir.exists():
         return []
 
+    # Sort by modification time (not folder name) so a non-timestamped directory
+    # (e.g. a manually created "crawl_SYNTHETIC_DEMO" fixture) can never be mistaken
+    # for the most recent real crawl just because it sorts alphabetically later.
     crawl_runs = sorted(
         [p for p in raw_dir.glob("crawl_*") if p.is_dir()],
-        key=lambda p: p.name,
+        key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     if crawl_runs:

@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from playwright.async_api import Browser, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
-from playwright.async_api import async_playwright
 
 from crawler.auth_signals import (
     looks_like_login_url,
@@ -159,8 +159,22 @@ async def _open_hub(page: Page, settings: CrawlerSettings) -> None:
         logger.warning("BMI Hub navigation timed out; continuing with the current page")
 
 
-async def interactive_login(settings: CrawlerSettings) -> Path:
-    """Open a headed browser so the employee can sign in normally, then save storage state."""
+async def interactive_login(
+    playwright: Any,
+    settings: CrawlerSettings,
+) -> tuple[Browser, BrowserContext, Page]:
+    """Open a headed browser so the employee can sign in normally.
+
+    Returns the live ``(browser, context, page)`` so the caller keeps crawling in the
+    *same* authenticated context. Some SSO stacks (e.g. MSAL configured with a
+    sessionStorage-based token cache) are not fully reproducible by serializing
+    ``storage_state()`` and reloading it into a brand-new browser/context immediately
+    afterwards, so callers must not discard this context and rebuild one from disk.
+
+    Storage state is still persisted to ``settings.storage_state_path`` as a best-effort
+    artifact so a *future* run can attempt to resume without interactive login, but that
+    resumption is not guaranteed for the reason above.
+    """
     ensure_auth_dir(settings.auth_dir)
     storage_path = settings.storage_state_path
 
@@ -170,38 +184,42 @@ async def interactive_login(settings: CrawlerSettings) -> Path:
     print(AUTH_REQUIRED_MESSAGE)
     print("=" * 72)
 
-    async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=False)
-        context = await browser.new_context(**_context_kwargs(settings))
-        page = await context.new_page()
+    browser = await playwright.chromium.launch(headless=False)
+    context = await browser.new_context(**_context_kwargs(settings))
+    page = await context.new_page()
+    try:
+        await _open_hub(page, settings)
+        authenticated = await wait_for_login(page, settings)
+        if not authenticated:
+            raise AuthenticationError(
+                "BMI Hub login was not completed within the authentication timeout. "
+                "The crawler did not save a session. Re-run the crawl and finish SSO/MFA "
+                "in the browser, then press Enter when you see BMI Hub."
+            )
         try:
-            await _open_hub(page, settings)
-            authenticated = await wait_for_login(page, settings)
-            if not authenticated:
-                raise AuthenticationError(
-                    "BMI Hub login was not completed within the authentication timeout. "
-                    "The crawler did not save a session. Re-run the crawl and finish SSO/MFA "
-                    "in the browser, then press Enter when you see BMI Hub."
-                )
             await context.storage_state(path=str(storage_path))
-            logger.info("Authentication successful")
-        finally:
-            await context.close()
-            await browser.close()
+        except Exception:  # noqa: BLE001 - best-effort only; live context still returned
+            logger.warning("Could not persist session storage state for future runs")
+        logger.info("Authentication successful")
+    except Exception:
+        await context.close()
+        await browser.close()
+        raise
 
-    return storage_path
+    return browser, context, page
 
 
 async def create_authenticated_context(
     browser: Browser,
     settings: CrawlerSettings,
-    *,
-    force_reauth: bool = False,
 ) -> BrowserContext:
-    """Create a browser context, reusing saved storage state when available."""
-    if force_reauth or not storage_state_exists(settings):
-        await interactive_login(settings)
+    """Create a browser context by resuming a previously saved storage state.
 
+    This never performs interactive login itself: callers should check
+    ``storage_state_exists()`` first and fall back to ``interactive_login()`` (reusing
+    its returned context directly) when no saved session exists or it turns out to be
+    invalid.
+    """
     if not storage_state_exists(settings):
         raise AuthenticationError(
             "No authorized BMI Hub session is saved. Complete the normal login in the browser first."

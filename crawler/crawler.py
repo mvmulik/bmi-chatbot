@@ -221,26 +221,14 @@ class BmiHubCrawler:
                 self._enqueue(url, 0, source="retry_state")
 
     async def _recover_session(self, playwright: Any) -> tuple[Any, Any, Any]:
-        """Pause the queue, complete normal browser login, then resume."""
+        """Pause the queue, complete normal browser login, then resume in that same context."""
         logger.info("Starting interactive BMI Hub login")
         if not self.allow_interactive:
             raise AuthenticationError(
                 "BMI Hub session expired and interactive login is disabled."
             )
-        await interactive_login(self.settings)
-        browser = await playwright.chromium.launch(headless=self.settings.headless)
-        context = await create_authenticated_context(
-            browser,
-            self.settings,
-            force_reauth=False,
-        )
-        page = await context.new_page()
+        browser, context, page = await interactive_login(playwright, self.settings)
         page.set_default_timeout(self.settings.navigation_timeout_ms)
-        if not await probe_authenticated_session(page, self.settings):
-            await context.close()
-            await browser.close()
-            raise AuthenticationError("BMI Hub authentication was not verified after login.")
-        logger.info("Authentication successful")
         return browser, context, page
 
     async def run(self) -> Path:
@@ -258,25 +246,29 @@ class BmiHubCrawler:
             )
 
         async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(headless=self.settings.headless)
-            context = None
+            browser: Any = None
+            context: Any = None
+            page: Any = None
             try:
-                context = await create_authenticated_context(
-                    browser,
-                    self.settings,
-                    force_reauth=self.force_reauth if self.allow_interactive else False,
-                )
-                page = await context.new_page()
-                page.set_default_timeout(self.settings.navigation_timeout_ms)
+                force_fresh_login = self.force_reauth and self.allow_interactive
+                if not force_fresh_login and storage_state_exists(self.settings):
+                    browser = await playwright.chromium.launch(headless=self.settings.headless)
+                    context = await create_authenticated_context(browser, self.settings)
+                    page = await context.new_page()
+                    page.set_default_timeout(self.settings.navigation_timeout_ms)
+                    if not await probe_authenticated_session(page, self.settings):
+                        await context.close()
+                        await browser.close()
+                        browser = context = page = None
 
-                if not await probe_authenticated_session(page, self.settings):
+                if context is None:
                     if not self.allow_interactive:
                         raise AuthenticationError(
-                            "Saved BMI Hub session is invalid and interactive login is disabled."
+                            "Saved BMI Hub session is missing or invalid and interactive "
+                            "login is disabled."
                         )
-                    await context.close()
-                    await browser.close()
-                    browser, context, page = await self._recover_session(playwright)
+                    browser, context, page = await interactive_login(playwright, self.settings)
+                    page.set_default_timeout(self.settings.navigation_timeout_ms)
 
                 while self.state.queue and len(self.state.successful) < self.settings.max_pages:
                     url, depth = self.state.queue.popleft()
@@ -316,6 +308,7 @@ class BmiHubCrawler:
             try:
                 response = await page.goto(url, wait_until="domcontentloaded")
                 status = response.status if response else None
+                await self._wait_for_spa_render(page)
                 return response, status
             except (PlaywrightTimeoutError, PlaywrightError) as exc:
                 last_error = exc
@@ -323,6 +316,22 @@ class BmiHubCrawler:
                     raise
                 await asyncio.sleep(min(2 * attempt, 6))
         raise last_error or PlaywrightError(f"Failed to open {url}")
+
+    async def _wait_for_spa_render(self, page: Any) -> None:
+        """Give client-rendered pages (e.g. BMI Hub's React/KendoReact shell) time to
+        finish fetching data and populate the DOM before we extract content/links.
+
+        ``domcontentloaded`` fires as soon as the initial (often near-empty) HTML shell
+        is parsed; the real navigation menu and page body render afterwards via async
+        JS/XHR calls. Waiting for the network to go idle is a generic, site-agnostic way
+        to let that finish. Bounded so a page with persistent background polling
+        (analytics beacons, etc.) can't stall the crawl indefinitely.
+        """
+        timeout_ms = min(self.settings.navigation_timeout_ms, 15_000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=timeout_ms)
+        except (PlaywrightTimeoutError, PlaywrightError):
+            logger.debug("Network did not go idle within %sms; continuing anyway", timeout_ms)
 
     async def _crawl_one(self, page: Any, url: str, depth: int) -> str:
         logger.info("Crawling: %s", log_path(url))
